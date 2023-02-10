@@ -1,0 +1,54 @@
+from unittest.mock import Mock
+
+import pytest
+from factories.database_configuration import database_configuration
+from factories.schema import columns, foreign_keys, models
+
+from domain.services import CreateSession, SchemaRepository, SerializeModels, Session
+from domain.usecases import ImportModels
+
+
+@pytest.fixture(params=[("pato", "pata"), ("patinho", "patinha")])
+def schema_repository(request):
+    schema_repository = Mock(spec=SchemaRepository)
+
+    schema_repository.get_tables.return_value = list(request.param)
+    schema_repository.get_columns.side_effect = lambda _, name: columns(name)
+    schema_repository.get_foreign_keys.side_effect = lambda _, name: foreign_keys(name)
+
+    return schema_repository
+
+
+@pytest.fixture
+def create_session():
+    create_session = Mock(spec=CreateSession)
+    create_session.call.return_value = Mock(spec=Session)
+    return create_session
+
+
+@pytest.fixture
+def serialize_models():
+    return Mock(spec=SerializeModels)
+
+
+@pytest.fixture
+def import_models(create_session, serialize_models, schema_repository):
+    return ImportModels(create_session, serialize_models, schema_repository)
+
+
+def test_should_create_session_with_configuration(import_models, create_session):
+    params = database_configuration()
+
+    import_models.call(params)
+
+    create_session.call.assert_called_with(params)
+
+
+def test_should_call_serializer_with_models(
+    import_models, serialize_models, schema_repository
+):
+    expected_models = [*map(models, schema_repository.get_tables(Mock()))]
+
+    import_models.call(Mock())
+
+    serialize_models.call.assert_called_with(expected_models)
